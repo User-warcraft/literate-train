@@ -1,0 +1,25 @@
+services:
+ windows:
+  image: dockurr/windows
+  container_name: windows
+  environment:
+   VERSION: "11"
+   USERNAME: "Admin"
+   RAM_SIZE: "4G"
+   CPU_CORES: "4"
+   DISK_SIZE: "512G"
+   DISK2_SIZE: "256G"
+   LANGUAGE: "English"
+   REGION: "zh_CN"    
+   KEYBOARD: "cn"    
+
+  devices:
+   - /dev/kvm
+   - /dev/net/tun
+  cap_add:
+   - NET_ADMIN
+  ports:
+   - "8006:8006"
+   - "3389:3389/tcp"
+   - "3389:3389/udp"
+  stop_grace_period: 2m
