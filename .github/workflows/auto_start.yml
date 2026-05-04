@@ -21,12 +21,18 @@ jobs:
           echo ">>> 启动代理..."
           gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && bash start.sh"
           
-          sleep 10
+          sleep 5
           
           echo ""
           echo "===================="
-          gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf.log | grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' | tail -1"
-          gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt"
+          echo "  VMess 地址:"
+          gh codespace ssh -c "$CS_NAME" -- "grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log | tail -1" 2>/dev/null || echo "  获取中..."
+          echo ""
+          echo "  HTTP 代理地址:"
+          gh codespace ssh -c "$CS_NAME" -- "grep -oP 'tcp://\K[a-zA-Z0-9.-]+\.trycloudflare\.com:\d+' /tmp/cf_http.log | tail -1" 2>/dev/null || echo "  获取中..."
+          echo ""
+          echo "  UUID:"
+          gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt" 2>/dev/null
           echo "===================="
           
           echo ">>> 保活 2 小时..."
