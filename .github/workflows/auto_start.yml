@@ -1,4 +1,4 @@
-name: 一键启动代理
+name: 一键启动代理（保活2小时）
 
 on:
   workflow_dispatch:
@@ -6,41 +6,39 @@ on:
 jobs:
   start:
     runs-on: ubuntu-latest
+    timeout-minutes: 130  # 给足余量，确保跑满2小时
     steps:
-      - name: 启动 Codespace 并运行代理
+      - name: 启动代理并保活2小时
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           echo "============================================"
-          echo "  一键启动代理"
+          echo "  一键启动代理（保活 2 小时）"
+          echo "  启动时间: $(date '+%Y-%m-%d %H:%M:%S')"
           echo "============================================"
           
           # 获取 Codespace 名称
           CS_NAME=$(gh codespace list --json name,state --jq '.[].name' | head -1)
           
           if [ -z "$CS_NAME" ]; then
-            echo "❌ 没有找到 Codespace，请先手动创建一个"
+            echo "❌ 没有找到 Codespace"
             exit 1
           fi
           
           echo "[1] 找到 Codespace: $CS_NAME"
           
-          echo "[2] 启动 Codespace..."
-          # 修正：不用 -c 参数，直接跟名称
-          gh codespace ssh -c "$CS_NAME" -- "echo 'Codespace is alive'"
-          
+          echo "[2] 唤醒/确认 Codespace 在线..."
+          gh codespace ssh -c "$CS_NAME" -- "echo 'online'" 2>/dev/null
           sleep 10
           
-          echo "[3] 运行 start.sh（后台运行）..."
-          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && nohup bash start.sh > /tmp/start.log 2>&1 &" &
-          
+          echo "[3] 启动代理服务（后台运行）..."
+          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && nohup bash start.sh > /tmp/start.log 2>&1 &"
           sleep 20
           
           echo "[4] 获取隧道地址..."
           TUNNEL_URL=$(gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf.log 2>/dev/null | grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' | tail -1" 2>/dev/null)
           
           if [ -z "$TUNNEL_URL" ]; then
-            # 备用：从 nohup 日志拿
             TUNNEL_URL=$(gh codespace ssh -c "$CS_NAME" -- "cat /tmp/start.log 2>/dev/null | grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' | tail -1" 2>/dev/null)
           fi
           
@@ -52,11 +50,31 @@ jobs:
             echo "  ✅ 代理已启动！"
             echo "  🌐 地址: $TUNNEL_URL"
             echo "  🔑 UUID: $UUID"
+            echo "  ⏰ 将在 2 小时后自动停止"
           else
-            echo "  ⚠️ 服务已启动，请在 Codespace 终端执行："
+            echo "  ⚠️ 请手动查看 Codespace 终端："
             echo "     cat /tmp/cf.log | grep trycloudflare"
           fi
           echo "============================================"
           
-          # 等待一会保持稳定
-          sleep 30
+          # ======== 保活 2 小时 ========
+          echo ""
+          echo "[保活] 开始保活，持续 2 小时..."
+          
+          END_TIME=$(($(date +%s) + 7200))  # 2小时 = 7200秒
+          
+          while [ $(date +%s) -lt $END_TIME ]; do
+            # 每 5 分钟发一次心跳
+            REMAINING=$(( ($END_TIME - $(date +%s)) / 60 ))
+            echo "[保活] $(date '+%H:%M:%S') - 剩余约 ${REMAINING} 分钟"
+            
+            gh codespace ssh -c "$CS_NAME" -- "echo 'keepalive $(date)'" 2>/dev/null || echo "  ⚠️ 心跳失败，继续尝试..."
+            
+            sleep 300  # 5分钟
+          done
+          
+          echo ""
+          echo "============================================"
+          echo "  ⏰ 2 小时已到，保活结束"
+          echo "  结束时间: $(date '+%Y-%m-%d %H:%M:%S')"
+          echo "============================================"
