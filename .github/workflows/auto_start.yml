@@ -12,34 +12,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          set -e
-          
           CS_NAME=$(gh codespace list --json name --jq '.[0].name')
           echo "Codespace: $CS_NAME"
           
-          echo ">>> 唤醒 Codespace..."
-          gh codespace ssh -c "$CS_NAME" -- "echo awake"
+          echo ">>> 唤醒..."
+          gh codespace ssh -c "$CS_NAME" -- "echo online"
           
-          echo ">>> 后台运行 start.sh..."
-          # 关键改动：用 nohup 后台跑，立即返回
-          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && nohup bash start.sh > /dev/null 2>&1 &"
+          echo ">>> 启动代理..."
+          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && bash start.sh"
           
-          sleep 30
+          sleep 10
           
           echo ""
           echo "===================="
-          echo "  获取代理信息："
-          gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf.log | grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' | tail -1 || echo '地址获取中...'"
-          echo ""
-          gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt || echo 'UUID 获取中...'"
+          gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf.log | grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' | tail -1"
+          gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt"
           echo "===================="
           
-          echo ""
           echo ">>> 保活 2 小时..."
           for i in $(seq 1 24); do
             echo "[$(date '+%H:%M')] 心跳 $i/24"
             gh codespace ssh -c "$CS_NAME" -- "echo alive" || true
             sleep 300
           done
-          
           echo ">>> 完成"
