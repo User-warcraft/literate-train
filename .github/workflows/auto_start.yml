@@ -18,15 +18,39 @@ jobs:
           echo ">>> 唤醒..."
           gh codespace ssh -c "$CS_NAME" -- "echo online"
           
-          echo ">>> 启动..."
-          gh codespace ssh -c "$CS_NAME" -- "bash /workspaces/codespaces-blank/start.sh"
+          echo ">>> 清理..."
+          gh codespace ssh -c "$CS_NAME" -- "pkill -9 -f xray; pkill -9 -f cloudflared; pkill -9 -f squid" 2>/dev/null || true
+          sleep 2
+          
+          echo ">>> 启动 Xray (VMess)..."
+          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./xray run -config config.json > xray.log 2>&1 &"
+          sleep 3
+          
+          echo ">>> 安装并启动 Squid (HTTP)..."
+          gh codespace ssh -c "$CS_NAME" -- "sudo apt update -qq && sudo apt install squid -y -qq" 2>/dev/null || true
+          gh codespace ssh -c "$CS_NAME" -- "sudo tee /etc/squid/squid.conf > /dev/null << 'SQ'
+http_port 3128
+acl all src 0.0.0.0/0
+http_access allow all
+SQ"
+          gh codespace ssh -c "$CS_NAME" -- "sudo service squid restart"
+          
+          echo ">>> 启动 VMess 隧道..."
+          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./cloudflared tunnel --url http://localhost:8080 > /tmp/cf_vmess.log 2>&1 &"
+          sleep 5
+          
+          echo ">>> 启动 HTTP 隧道..."
+          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./cloudflared tunnel --url tcp://localhost:3128 > /tmp/cf_http.log 2>&1 &"
+          sleep 10
           
           echo ""
           echo "===================="
           echo "VMess 地址:"
-          gh codespace ssh -c "$CS_NAME" -- "grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log | tail -1"
+          gh codespace ssh -c "$CS_NAME" -- "grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log | tail -1" || echo "获取中..."
+          echo ""
           echo "HTTP 代理地址:"
-          gh codespace ssh -c "$CS_NAME" -- "grep -oP 'tcp://\K[a-zA-Z0-9.-]+\.trycloudflare\.com:\d+' /tmp/cf_http.log | tail -1"
+          gh codespace ssh -c "$CS_NAME" -- "grep -oP 'tcp://\K[a-zA-Z0-9.-]+\.trycloudflare\.com:\d+' /tmp/cf_http.log | tail -1" || echo "获取中..."
+          echo ""
           echo "UUID:"
           gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt"
           echo "===================="
