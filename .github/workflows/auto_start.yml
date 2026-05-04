@@ -17,41 +17,42 @@ jobs:
           
           echo ">>> 唤醒..."
           gh codespace ssh -c "$CS_NAME" -- "echo online"
+          sleep 3
           
           echo ">>> 清理..."
-          gh codespace ssh -c "$CS_NAME" -- "pkill -9 -f xray 2>/dev/null; pkill -9 -f cloudflared 2>/dev/null; echo done" || true
-          sleep 1
+          gh codespace ssh -c "$CS_NAME" -- "pkill -f xray 2>/dev/null; pkill -f cloudflared 2>/dev/null; echo cleaned" || true
+          sleep 3
           
           echo ">>> Xray..."
           gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./xray run -config config.json > xray.log 2>&1 &"
           sleep 3
           
           echo ">>> Squid..."
-          gh codespace ssh -c "$CS_NAME" -- "command -v squid >/dev/null || sudo apt install -y -qq squid; printf 'http_port 3128\nacl all src 0.0.0.0/0\nhttp_access allow all\n' | sudo tee /etc/squid/squid.conf; sudo service squid restart" || true
+          gh codespace ssh -c "$CS_NAME" -- "command -v squid >/dev/null 2>&1 || sudo apt install -y -qq squid 2>/dev/null; printf 'http_port 3128\nacl all src 0.0.0.0/0\nhttp_access allow all\n' | sudo tee /etc/squid/squid.conf >/dev/null; sudo service squid restart 2>/dev/null; echo squid done" || true
           sleep 2
           
           echo ">>> VMess 隧道..."
           gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./cloudflared tunnel --url http://localhost:8080 > /tmp/cf_vmess.log 2>&1 &"
-          sleep 6
+          sleep 8
           
           echo ">>> HTTP 隧道..."
           gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./cloudflared tunnel --url tcp://localhost:3128 > /tmp/cf_http.log 2>&1 &"
-          sleep 8
+          sleep 10
           
           echo ""
           echo "===================="
           echo "VMess:"
-          gh codespace ssh -c "$CS_NAME" -- "grep trycloudflare /tmp/cf_vmess.log | head -1"
+          gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf_vmess.log 2>/dev/null | grep trycloudflare | head -1" || echo "  待查看"
           echo "HTTP:"
-          gh codespace ssh -c "$CS_NAME" -- "grep trycloudflare /tmp/cf_http.log | head -1"
+          gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf_http.log 2>/dev/null | grep trycloudflare | head -1" || echo "  待查看"
           echo "UUID:"
-          gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt"
+          gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt 2>/dev/null" || echo "  待查看"
           echo "===================="
           
           echo ">>> 保活 2h..."
           for i in $(seq 1 24); do
             echo "[$(date +%H:%M)] $i/24"
-            gh codespace ssh -c "$CS_NAME" -- "echo alive" || true
+            gh codespace ssh -c "$CS_NAME" -- "echo alive" 2>/dev/null || { echo "  重连中..."; sleep 10; }
             sleep 300
           done
           echo ">>> 完成"
