@@ -18,26 +18,22 @@ jobs:
           echo ">>> 唤醒..."
           gh codespace ssh -c "$CS_NAME" -- "echo online"
           
-          echo ">>> 启动代理..."
-          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && bash start.sh"
-          
-          sleep 5
+          echo ">>> 启动..."
+          gh codespace ssh -c "$CS_NAME" -- "bash /workspaces/codespaces-blank/start.sh"
           
           echo ""
           echo "===================="
-          echo "  VMess 地址:"
-          gh codespace ssh -c "$CS_NAME" -- "grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log | tail -1" 2>/dev/null || echo "  获取中..."
-          echo ""
-          echo "  HTTP 代理地址:"
-          gh codespace ssh -c "$CS_NAME" -- "grep -oP 'tcp://\K[a-zA-Z0-9.-]+\.trycloudflare\.com:\d+' /tmp/cf_http.log | tail -1" 2>/dev/null || echo "  获取中..."
-          echo ""
-          echo "  UUID:"
-          gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt" 2>/dev/null
+          echo "VMess 地址:"
+          gh codespace ssh -c "$CS_NAME" -- "grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log | tail -1"
+          echo "HTTP 代理地址:"
+          gh codespace ssh -c "$CS_NAME" -- "grep -oP 'tcp://\K[a-zA-Z0-9.-]+\.trycloudflare\.com:\d+' /tmp/cf_http.log | tail -1"
+          echo "UUID:"
+          gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt"
           echo "===================="
           
           echo ">>> 保活 2 小时..."
           for i in $(seq 1 24); do
-            echo "[$(date '+%H:%M')] 心跳 $i/24"
+            echo "[$(date +%H:%M)] 心跳 $i/24"
             gh codespace ssh -c "$CS_NAME" -- "echo alive" || true
             sleep 300
           done
