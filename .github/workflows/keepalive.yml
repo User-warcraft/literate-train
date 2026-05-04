@@ -1,4 +1,4 @@
-name: Codespace Keepalive via API
+name: Codespace Keepalive
 
 on:
   schedule:
@@ -11,35 +11,25 @@ jobs:
     steps:
       - name: Keep Codespace Alive
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}  # 关键：用 PAT 代替 GITHUB_TOKEN
         run: |
-          set -x
+          echo "[1] 检查 Codespace 状态..."
           
-          REPO_OWNER="${{ github.repository_owner }}"
-          echo "仓库所有者: $REPO_OWNER"
-          
-          # 通过 API 获取所有 Codespace
-          RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/user/codespaces?per_page=100")
-          
-          echo "API 回应: $RESPONSE"
-          
-          # 提取所有可用的 Codespace 名称
-          CODESPACES=$(echo "$RESPONSE" | jq -r '.codespaces[] | select(.state=="Available") | .name' 2>/dev/null)
+          # 列出所有可用的 Codespace
+          CODESPACES=$(gh codespace list --json name,state --jq '.[] | select(.state=="Available") | .name' 2>&1)
           
           if [ -z "$CODESPACES" ]; then
-            echo "没有运行中的 Codespace，正常退出。"
+            echo "没有运行中的 Codespace，退出。"
             exit 0
           fi
           
+          echo "发现运行中的 Codespace："
+          echo "$CODESPACES"
+          
+          # 向每个 Codespace 发送保活命令
           for cs in $CODESPACES; do
-            echo "向 $cs 发起保活请求..."
-            # 用简单的 API 调用来更新 Codespace 的活动时间戳
-            curl -s -X PATCH -H "Authorization: token $GH_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/user/codespaces/$cs" \
-              -d '{"idle_timeout_minutes":30}' || echo "保活失败: $cs"
+            echo "[+] 向 $cs 发送保活信号..."
+            gh codespace ssh -c "$cs" -- "echo keepalive-$(date +%s)" 2>&1 || echo "  警告：$cs 可能正在休眠"
           done
           
-          echo "保活完成"
+          echo "[√] 保活完成"
