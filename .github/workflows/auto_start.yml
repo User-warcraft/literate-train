@@ -20,15 +20,18 @@ jobs:
           echo ">>> 唤醒 Codespace..."
           gh codespace ssh -c "$CS_NAME" -- "echo awake"
           
-          echo ">>> 运行 start.sh..."
-          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && bash start.sh > /tmp/action.log 2>&1 &"
+          echo ">>> 后台运行 start.sh..."
+          # 关键改动：用 nohup 后台跑，立即返回
+          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && nohup bash start.sh > /dev/null 2>&1 &"
           
-          sleep 25
+          sleep 30
           
           echo ""
           echo "===================="
-          echo "  隧道日志："
-          gh codespace ssh -c "$CS_NAME" -- "cat /tmp/action.log" || true
+          echo "  获取代理信息："
+          gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf.log | grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' | tail -1 || echo '地址获取中...'"
+          echo ""
+          gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt || echo 'UUID 获取中...'"
           echo "===================="
           
           echo ""
