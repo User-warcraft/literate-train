@@ -1,71 +1,42 @@
-      - name: 启动代理并保活2小时
+name: 一键启动代理
+
+on:
+  workflow_dispatch:
+
+jobs:
+  start:
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    steps:
+      - name: 运行
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          echo "============================================"
-          echo "  一键启动代理（保活 2 小时）"
-          echo "  启动时间: $(date '+%Y-%m-%d %H:%M:%S')"
-          echo "============================================"
+          set -e
           
-          CS_NAME=$(gh codespace list --json name,state --jq '.[].name' | head -1)
+          CS_NAME=$(gh codespace list --json name --jq '.[0].name')
+          echo "Codespace: $CS_NAME"
           
-          if [ -z "$CS_NAME" ]; then
-            echo "❌ 没有找到 Codespace"
-            exit 1
-          fi
+          echo ">>> 唤醒 Codespace..."
+          gh codespace ssh -c "$CS_NAME" -- "echo awake"
           
-          echo "[1] 找到 Codespace: $CS_NAME"
+          echo ">>> 运行 start.sh..."
+          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && bash start.sh > /tmp/action.log 2>&1 &"
           
-          echo "[2] 唤醒/确认 Codespace 在线..."
-          gh codespace ssh -c "$CS_NAME" -- "echo 'online'" 2>/dev/null
-          sleep 5
-          
-          echo "[3] 清除旧代理进程..."
-          # 加 || true 防止无进程时报错
-          gh codespace ssh -c "$CS_NAME" -- "pkill -9 -f xray 2>/dev/null; pkill -9 -f cloudflared 2>/dev/null; rm -f /tmp/cf.log" 2>/dev/null || true
-          sleep 2
-          
-          echo "[4] 启动 Xray..."
-          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./xray run -config config.json > xray.log 2>&1 &" 2>/dev/null || true
-          sleep 5
-          
-          echo "[5] 启动 cloudflared 隧道..."
-          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./cloudflared tunnel --url http://localhost:8080 > /tmp/cf.log 2>&1 &" 2>/dev/null || true
-          sleep 15
-          
-          echo "[6] 获取隧道地址..."
-          TUNNEL_URL=$(gh codespace ssh -c "$CS_NAME" -- "grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf.log | tail -1" 2>/dev/null || echo "")
-          UUID=$(gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt" 2>/dev/null || echo "获取失败")
+          sleep 25
           
           echo ""
-          echo "============================================"
-          if [ -n "$TUNNEL_URL" ]; then
-            echo "  ✅ 代理已成功启动！"
-            echo ""
-            echo "  🌐 地址: $TUNNEL_URL"
-            echo "  🔌 端口: 8080"
-            echo "  🔑 UUID: $UUID"
-            echo "  📡 传输: ws"
-            echo "  🛤️ 路径: /"
-          else
-            echo "  ⚠️ 地址获取失败，手动查看："
-            echo "  gh codespace ssh -c $CS_NAME -- cat /tmp/cf.log"
-          fi
-          echo "============================================"
+          echo "===================="
+          echo "  隧道日志："
+          gh codespace ssh -c "$CS_NAME" -- "cat /tmp/action.log" || true
+          echo "===================="
           
-          # 保活 2 小时
           echo ""
-          echo "[保活] 开始，持续 2 小时..."
-          END_TIME=$(($(date +%s) + 7200))
-          
-          while [ $(date +%s) -lt $END_TIME ]; do
-            REMAINING=$(( ($END_TIME - $(date +%s)) / 60 ))
-            echo "[保活] $(date '+%H:%M:%S') - 剩余 ${REMAINING} 分钟"
-            gh codespace ssh -c "$CS_NAME" -- "echo 'keepalive $(date)'" 2>/dev/null || true
+          echo ">>> 保活 2 小时..."
+          for i in $(seq 1 24); do
+            echo "[$(date '+%H:%M')] 心跳 $i/24"
+            gh codespace ssh -c "$CS_NAME" -- "echo alive" || true
             sleep 300
           done
           
-          echo ""
-          echo "============================================"
-          echo "  ⏰ 2 小时已到，保活结束"
-          echo "============================================"
+          echo ">>> 完成"
