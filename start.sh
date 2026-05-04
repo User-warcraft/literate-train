@@ -42,8 +42,3 @@ echo "=============================="
 echo "新地址: $(grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf.log 2>/dev/null || echo '等待中...')"
 echo "UUID: $UUID"
 echo "=============================="
-
-while true; do
-  echo "Keep alive: $(date)"
-  sleep 60
-done
