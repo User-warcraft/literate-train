@@ -15,56 +15,42 @@ jobs:
           CS_NAME=$(gh codespace list --json name --jq '.[0].name')
           echo "Codespace: $CS_NAME"
           
-          # 唤醒
           echo ">>> 唤醒..."
           gh codespace ssh -c "$CS_NAME" -- "echo online"
           
-          # 清理
-          echo ">>> 清理旧进程..."
-          gh codespace ssh -c "$CS_NAME" -- "pkill -9 -f xray 2>/dev/null; pkill -9 -f cloudflared 2>/dev/null; pkill -9 -f squid 2>/dev/null; sleep 2; echo done" || true
+          echo ">>> 清理..."
+          gh codespace ssh -c "$CS_NAME" -- "pkill -9 -f xray 2>/dev/null; pkill -9 -f cloudflared 2>/dev/null; echo done" || true
+          sleep 1
           
-          # 启动 Xray
-          echo ">>> 启动 Xray (VMess)..."
+          echo ">>> Xray..."
           gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./xray run -config config.json > xray.log 2>&1 &"
           sleep 3
           
-          # 装 Squid
-          echo ">>> 安装 Squid..."
-          gh codespace ssh -c "$CS_NAME" -- "sudo apt update -qq && sudo apt install -y -qq squid" || true
-          
-          # 配置 Squid
-          echo ">>> 配置 Squid..."
-          gh codespace ssh -c "$CS_NAME" -- "printf 'http_port 3128\nacl all src 0.0.0.0/0\nhttp_access allow all\n' | sudo tee /etc/squid/squid.conf"
-          gh codespace ssh -c "$CS_NAME" -- "sudo service squid restart"
+          echo ">>> Squid..."
+          gh codespace ssh -c "$CS_NAME" -- "command -v squid >/dev/null || sudo apt install -y -qq squid; printf 'http_port 3128\nacl all src 0.0.0.0/0\nhttp_access allow all\n' | sudo tee /etc/squid/squid.conf; sudo service squid restart" || true
           sleep 2
           
-          # 启动 VMess 隧道
-          echo ">>> 启动 VMess 隧道..."
+          echo ">>> VMess 隧道..."
           gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./cloudflared tunnel --url http://localhost:8080 > /tmp/cf_vmess.log 2>&1 &"
+          sleep 6
+          
+          echo ">>> HTTP 隧道..."
+          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./cloudflared tunnel --url tcp://localhost:3128 > /tmp/cf_http.log 2>&1 &"
           sleep 8
           
-          # 启动 HTTP 隧道
-          echo ">>> 启动 HTTP 隧道..."
-          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./cloudflared tunnel --url tcp://localhost:3128 > /tmp/cf_http.log 2>&1 &"
-          sleep 10
-          
-          # 输出
           echo ""
           echo "===================="
-          echo "VMess 地址:"
-          gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf_vmess.log | grep trycloudflare | head -1"
-          echo ""
-          echo "HTTP 代理地址:"
-          gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf_http.log | grep trycloudflare | head -1"
-          echo ""
+          echo "VMess:"
+          gh codespace ssh -c "$CS_NAME" -- "grep trycloudflare /tmp/cf_vmess.log | head -1"
+          echo "HTTP:"
+          gh codespace ssh -c "$CS_NAME" -- "grep trycloudflare /tmp/cf_http.log | head -1"
           echo "UUID:"
           gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt"
           echo "===================="
           
-          # 保活
-          echo ">>> 保活 2 小时..."
+          echo ">>> 保活 2h..."
           for i in $(seq 1 24); do
-            echo "[$(date +%H:%M)] 心跳 $i/24"
+            echo "[$(date +%H:%M)] $i/24"
             gh codespace ssh -c "$CS_NAME" -- "echo alive" || true
             sleep 300
           done
