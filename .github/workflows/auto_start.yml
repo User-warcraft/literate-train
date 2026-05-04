@@ -1,0 +1,56 @@
+name: 一键启动代理
+
+on:
+  workflow_dispatch:
+
+jobs:
+  start:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 启动 Codespace 并运行 start.sh
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          echo "============================================"
+          echo "  一键启动代理"
+          echo "============================================"
+          
+          # 获取你的 Codespace 名称
+          CS_NAME=$(gh codespace list --json name,state --jq '.[].name' | head -1)
+          
+          if [ -z "$CS_NAME" ]; then
+            echo "❌ 没有找到 Codespace，请先手动创建一个"
+            exit 1
+          fi
+          
+          echo "[1] 找到 Codespace: $CS_NAME"
+          
+          echo "[2] 启动 Codespace..."
+          gh codespace start -c "$CS_NAME"
+          sleep 15
+          
+          echo "[3] 运行 start.sh..."
+          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && bash start.sh" &
+          
+          sleep 20
+          
+          echo "[4] 获取隧道地址..."
+          gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf.log 2>/dev/null | grep -o 'https://[a-zA-Z0-9.-]*\.trycloudflare\.com' | tail -1" 2>/dev/null || echo "隧道地址获取中..."
+          
+          sleep 5
+          
+          HTTP_URL=$(gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf.log 2>/dev/null | grep -o 'https://[a-zA-Z0-9.-]*\.trycloudflare\.com' | tail -1" 2>/dev/null)
+          
+          echo ""
+          echo "============================================"
+          if [ -n "$HTTP_URL" ]; then
+            echo "  ✅ 代理已启动！"
+            echo "  🌐 地址: $HTTP_URL"
+            echo "  🔑 UUID: $(gh codespace ssh -c "$CS_NAME" -- 'cat /workspaces/codespaces-blank/xray/uuid.txt' 2>/dev/null)"
+          else
+            echo "  ⚠️ 请手动查看 Codespace 终端获取地址"
+          fi
+          echo "============================================"
+          
+          # 保持运行一段时间让服务稳定
+          sleep 60
