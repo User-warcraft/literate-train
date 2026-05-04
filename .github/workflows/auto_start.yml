@@ -1,13 +1,3 @@
-name: 一键启动代理（保活2小时）
-
-on:
-  workflow_dispatch:
-
-jobs:
-  start:
-    runs-on: ubuntu-latest
-    timeout-minutes: 130
-    steps:
       - name: 启动代理并保活2小时
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
@@ -31,20 +21,21 @@ jobs:
           sleep 5
           
           echo "[3] 清除旧代理进程..."
-          gh codespace ssh -c "$CS_NAME" -- "pkill -9 -f xray; pkill -9 -f cloudflared; rm -f /tmp/cf.log" 2>/dev/null
+          # 加 || true 防止无进程时报错
+          gh codespace ssh -c "$CS_NAME" -- "pkill -9 -f xray 2>/dev/null; pkill -9 -f cloudflared 2>/dev/null; rm -f /tmp/cf.log" 2>/dev/null || true
           sleep 2
           
           echo "[4] 启动 Xray..."
-          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./xray run -config config.json > xray.log 2>&1 &"
+          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./xray run -config config.json > xray.log 2>&1 &" 2>/dev/null || true
           sleep 5
           
           echo "[5] 启动 cloudflared 隧道..."
-          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./cloudflared tunnel --url http://localhost:8080 > /tmp/cf.log 2>&1 &"
+          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank/xray && nohup ./cloudflared tunnel --url http://localhost:8080 > /tmp/cf.log 2>&1 &" 2>/dev/null || true
           sleep 15
           
           echo "[6] 获取隧道地址..."
-          TUNNEL_URL=$(gh codespace ssh -c "$CS_NAME" -- "grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf.log | tail -1" 2>/dev/null)
-          UUID=$(gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt" 2>/dev/null)
+          TUNNEL_URL=$(gh codespace ssh -c "$CS_NAME" -- "grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf.log | tail -1" 2>/dev/null || echo "")
+          UUID=$(gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt" 2>/dev/null || echo "获取失败")
           
           echo ""
           echo "============================================"
@@ -56,10 +47,8 @@ jobs:
             echo "  🔑 UUID: $UUID"
             echo "  📡 传输: ws"
             echo "  🛤️ 路径: /"
-            echo ""
-            echo "  ⏰ 保活时间: 2 小时"
           else
-            echo "  ⚠️ 地址获取失败，手动执行："
+            echo "  ⚠️ 地址获取失败，手动查看："
             echo "  gh codespace ssh -c $CS_NAME -- cat /tmp/cf.log"
           fi
           echo "============================================"
@@ -72,7 +61,7 @@ jobs:
           while [ $(date +%s) -lt $END_TIME ]; do
             REMAINING=$(( ($END_TIME - $(date +%s)) / 60 ))
             echo "[保活] $(date '+%H:%M:%S') - 剩余 ${REMAINING} 分钟"
-            gh codespace ssh -c "$CS_NAME" -- "echo 'keepalive $(date)'" 2>/dev/null
+            gh codespace ssh -c "$CS_NAME" -- "echo 'keepalive $(date)'" 2>/dev/null || true
             sleep 300
           done
           
