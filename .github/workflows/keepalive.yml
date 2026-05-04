@@ -2,9 +2,8 @@ name: Codespace Keepalive
 
 on:
   schedule:
-    # 每 20 分钟发送一次心跳，防止 30 分钟自动休眠
     - cron: '*/20 * * * *'
-  workflow_dispatch:  # 支持手动触发测试
+  workflow_dispatch:
 
 jobs:
   keepalive:
@@ -14,16 +13,36 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 获取所有 Codespace 列表
-          CODESPACES=$(gh codespace list --json name,state --jq '.[] | select(.state=="Available") | .name')
+          set -x  # 显示每条命令的执行过程，方便排查
+          
+          # 检查 gh 是否已认证
+          echo "[1] 检查 GitHub CLI 认证状态..."
+          gh auth status || echo "认证失败，尝试继续..."
+          
+          # 获取当前仓库名
+          REPO="${{ github.repository }}"
+          echo "[2] 当前仓库: $REPO"
+          
+          # 获取所有可用的 Codespace
+          echo "[3] 获取 Codespace 列表..."
+          CODESPACES=$(gh codespace list --repo "$REPO" --json name,state --jq '.[] | select(.state=="Available") | .name' 2>&1)
+          
+          echo "[4] Codespace 查询结果: $CODESPACES"
           
           if [ -z "$CODESPACES" ]; then
-            echo "没有发现运行中的 Codespace，跳过。"
-          else
-            echo "发现运行中的 Codespace："
-            echo "$CODESPACES"
-            for cs in $CODESPACES; do
-              echo "向 Codespace [$cs] 发送保活信号..."
-              gh codespace ssh -c "$cs" -- echo "keepalive $(date)"
-            done
+            echo "[!] 警告：没有运行中的 Codespace。"
+            echo "    请确认："
+            echo "    1. Codespace 当前是否在运行？"
+            echo "    2. Codespace 是否属于仓库 $REPO ？"
+            exit 0
           fi
+          
+          # 向每个 Codespace 发送保活命令
+          for cs in $CODESPACES; do
+            echo "[+] 向 $cs 发送保活心跳..."
+            gh codespace ssh -c "$cs" -- "echo keepalive-$(date +%s)" || {
+              echo "[!] 无法连接到 $cs"
+            }
+          done
+          
+          echo "[√] 保活完成"
