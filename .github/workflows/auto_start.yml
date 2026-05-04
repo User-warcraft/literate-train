@@ -7,7 +7,7 @@ jobs:
   start:
     runs-on: ubuntu-latest
     steps:
-      - name: 启动 Codespace 并运行 start.sh
+      - name: 启动 Codespace 并运行代理
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
@@ -15,7 +15,7 @@ jobs:
           echo "  一键启动代理"
           echo "============================================"
           
-          # 获取你的 Codespace 名称
+          # 获取 Codespace 名称
           CS_NAME=$(gh codespace list --json name,state --jq '.[].name' | head -1)
           
           if [ -z "$CS_NAME" ]; then
@@ -26,31 +26,37 @@ jobs:
           echo "[1] 找到 Codespace: $CS_NAME"
           
           echo "[2] 启动 Codespace..."
-          gh codespace start -c "$CS_NAME"
-          sleep 15
+          # 修正：不用 -c 参数，直接跟名称
+          gh codespace ssh -c "$CS_NAME" -- "echo 'Codespace is alive'"
           
-          echo "[3] 运行 start.sh..."
-          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && bash start.sh" &
+          sleep 10
+          
+          echo "[3] 运行 start.sh（后台运行）..."
+          gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && nohup bash start.sh > /tmp/start.log 2>&1 &" &
           
           sleep 20
           
           echo "[4] 获取隧道地址..."
-          gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf.log 2>/dev/null | grep -o 'https://[a-zA-Z0-9.-]*\.trycloudflare\.com' | tail -1" 2>/dev/null || echo "隧道地址获取中..."
+          TUNNEL_URL=$(gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf.log 2>/dev/null | grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' | tail -1" 2>/dev/null)
           
-          sleep 5
+          if [ -z "$TUNNEL_URL" ]; then
+            # 备用：从 nohup 日志拿
+            TUNNEL_URL=$(gh codespace ssh -c "$CS_NAME" -- "cat /tmp/start.log 2>/dev/null | grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' | tail -1" 2>/dev/null)
+          fi
           
-          HTTP_URL=$(gh codespace ssh -c "$CS_NAME" -- "cat /tmp/cf.log 2>/dev/null | grep -o 'https://[a-zA-Z0-9.-]*\.trycloudflare\.com' | tail -1" 2>/dev/null)
+          UUID=$(gh codespace ssh -c "$CS_NAME" -- "cat /workspaces/codespaces-blank/xray/uuid.txt 2>/dev/null" 2>/dev/null)
           
           echo ""
           echo "============================================"
-          if [ -n "$HTTP_URL" ]; then
+          if [ -n "$TUNNEL_URL" ]; then
             echo "  ✅ 代理已启动！"
-            echo "  🌐 地址: $HTTP_URL"
-            echo "  🔑 UUID: $(gh codespace ssh -c "$CS_NAME" -- 'cat /workspaces/codespaces-blank/xray/uuid.txt' 2>/dev/null)"
+            echo "  🌐 地址: $TUNNEL_URL"
+            echo "  🔑 UUID: $UUID"
           else
-            echo "  ⚠️ 请手动查看 Codespace 终端获取地址"
+            echo "  ⚠️ 服务已启动，请在 Codespace 终端执行："
+            echo "     cat /tmp/cf.log | grep trycloudflare"
           fi
           echo "============================================"
           
-          # 保持运行一段时间让服务稳定
-          sleep 60
+          # 等待一会保持稳定
+          sleep 30
