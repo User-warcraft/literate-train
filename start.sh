@@ -1,14 +1,12 @@
 #!/bin/bash
+set -e
 
-# ========== 清理旧进程 ==========
-pkill -9 -f xray 2>/dev/null
-pkill -9 -f cloudflared 2>/dev/null
-pkill -9 -f squid 2>/dev/null
+echo ">>> 清理..."
+pkill -f xray 2>/dev/null || true
+pkill -f cloudflared 2>/dev/null || true
 sleep 2
 
-# ========== 1. VMess 代理 (Xray) ==========
-echo "[1/2] 启动 VMess 代理..."
-
+echo ">>> Xray..."
 cd /workspaces/codespaces-blank/xray
 UUID=$(cat uuid.txt)
 cat > config.json << EOF
@@ -26,55 +24,30 @@ EOF
 
 nohup ./xray run -config config.json > xray.log 2>&1 &
 sleep 3
+echo "VMess OK"
 
-if ps aux | grep -q "[x]ray run"; then
-    echo "✅ VMess 启动成功 (端口 8080)"
-else
-    echo "❌ VMess 启动失败"
+echo ">>> Squid..."
+if ! command -v squid >/dev/null 2>&1; then
+    sudo apt update -qq && sudo apt install -y -qq squid
 fi
+printf 'http_port 3128\nacl all src 0.0.0.0/0\nhttp_access allow all\n' | sudo tee /etc/squid/squid.conf > /dev/null
+sudo service squid restart 2>/dev/null || true
+echo "Squid OK"
 
-# ========== 2. HTTP 代理 (Squid) ==========
-echo "[2/2] 启动 HTTP 代理..."
-
-# 装 Squid（如果没装）
-if ! command -v squid &>/dev/null; then
-    sudo apt update -qq && sudo apt install squid -y -qq
-fi
-
-# 配置 Squid
-sudo tee /etc/squid/squid.conf > /dev/null << 'SQUID_CONF'
-http_port 3128
-acl all src 0.0.0.0/0
-http_access allow all
-httpd_suppress_version_string on
-coredump_dir /var/spool/squid
-SQUID_CONF
-
-sudo service squid restart
-echo "✅ HTTP 代理启动成功 (端口 3128)"
-
-# ========== 3. 启动两个隧道 ==========
-echo "启动隧道..."
-
-# 隧道1：VMess（http 模式）
-nohup ./cloudflared tunnel --url http://localhost:8080 > /tmp/cf_vmess.log 2>&1 &
+echo ">>> 隧道..."
+./cloudflared tunnel --url http://localhost:8080 > /tmp/cf_vmess.log 2>&1 &
 sleep 5
-
-# 隧道2：HTTP 代理（tcp 模式）
-nohup ./cloudflared tunnel --url tcp://localhost:3128 > /tmp/cf_http.log 2>&1 &
+./cloudflared tunnel --url tcp://localhost:3128 > /tmp/cf_http.log 2>&1 &
 sleep 8
 
-# ========== 4. 打印信息 ==========
 echo ""
-echo "=============================================="
-echo "  VMess 代理"
-echo "  地址: $(grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log 2>/dev/null || echo '获取中...')"
-echo "  端口: 8080"
-echo "  UUID: $UUID"
-echo "=============================================="
+echo "===================="
+echo "VMess:"
+grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log 2>/dev/null | tail -1 || echo "稍等..."
 echo ""
-echo "=============================================="
-echo "  HTTP 代理"
-echo "  地址: $(grep -oP 'tcp://\K[a-zA-Z0-9.-]+\.trycloudflare\.com:\d+' /tmp/cf_http.log 2>/dev/null || echo '获取中...')"
-echo "=============================================="
+echo "HTTP:"
+grep -oP 'tcp://\K[a-zA-Z0-9.-]+\.trycloudflare\.com:\d+' /tmp/cf_http.log 2>/dev/null | tail -1 || echo "稍等..."
 echo ""
+echo "UUID: $UUID"
+echo "===================="
+echo "DONE"
