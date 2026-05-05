@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-echo ">>> 清理..."
+echo ">>> 清理旧进程..."
 pkill -f xray 2>/dev/null || true
 pkill -f cloudflared 2>/dev/null || true
 sleep 2
 
-echo ">>> Xray..."
+echo ">>> 启动VMess..."
 cd /workspaces/codespaces-blank/xray
 UUID=$(cat uuid.txt)
 cat > config.json << EOF
@@ -21,37 +21,45 @@ cat > config.json << EOF
   "outbounds": [{"protocol": "freedom", "settings": {}}]
 }
 EOF
-
 nohup ./xray run -config config.json > xray.log 2>&1 &
 sleep 3
-echo "VMess OK"
+echo "✅ VMess 已启动"
 
-echo ">>> Squid..."
+echo ">>> 启动HTTP代理..."
 if ! command -v squid >/dev/null 2>&1; then
     sudo apt update -qq && sudo apt install -y -qq squid
 fi
 printf 'http_port 3128\nacl all src 0.0.0.0/0\nhttp_access allow all\n' | sudo tee /etc/squid/squid.conf > /dev/null
 sudo service squid restart 2>/dev/null || true
-echo "Squid OK"
+echo "✅ HTTP 代理已启动 (本地端口3128)"
 
-echo ">>> 隧道..."
+echo ">>> 建立隧道..."
 ./cloudflared tunnel --url http://localhost:8080 > /tmp/cf_vmess.log 2>&1 &
 sleep 5
 ./cloudflared tunnel --url tcp://localhost:3128 > /tmp/cf_http.log 2>&1 &
-sleep 10
+sleep 12
 
-# 直接从 metrics 拿 HTTP 地址
-HTTP_ADDR=$(curl -s http://localhost:20241/metrics 2>/dev/null | grep tcp_ingress | grep -oP 'hostname="\K[^"]+' | tail -1)
-HTTP_PORT=$(curl -s http://localhost:20241/metrics 2>/dev/null | grep tcp_ingress | grep -oP 'port="\K[^"]+' | tail -1)
+echo ">>> 读取地址..."
+# 抓取 HTTP 代理公网地址
+HTTP_INFO=$(curl -s http://localhost:20241/metrics 2>/dev/null | grep tcp_ingress | tail -1)
+HTTP_HOST=$(echo "$HTTP_INFO" | grep -oP 'hostname="\K[^"]+')
+HTTP_PORT=$(echo "$HTTP_INFO" | grep -oP 'port="\K[^"]+')
 
-VMESS_ADDR=$(grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log 2>/dev/null | tail -1)
+# 抓取 VMess 公网地址
+VMESS_HOST=$(grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log 2>/dev/null | tail -1)
 
 echo ""
-echo "===================="
-echo "VMess: ${VMESS_ADDR:-未获取到}"
-echo "端口: 8080"
-echo "UUID: $UUID"
-echo "--------------------"
-echo "HTTP: ${HTTP_ADDR:-未获取到}:${HTTP_PORT:-未获取到}"
-echo "===================="
-echo "DONE"
+echo "============================================"
+echo "  VMess 连接信息"
+echo "  地址: ${VMESS_HOST:-未获取到}"
+echo "  端口: 8080"
+echo "  UUID: $UUID"
+echo "  传输: ws, 路径: /"
+echo "============================================"
+echo ""
+echo "============================================"
+echo "  HTTP 代理连接信息"
+echo "  服务器: ${HTTP_HOST:-未获取到}"
+echo "  端口: ${HTTP_PORT:-未获取到}"
+echo "============================================"
+echo "服务启动完成。"
