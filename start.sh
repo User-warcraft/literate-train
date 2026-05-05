@@ -46,7 +46,9 @@ echo "VMess:"
 grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log 2>/dev/null | tail -1 || echo "稍等..."
 echo ""
 echo "HTTP:"
-grep -oP '[a-zA-Z0-9.-]+\.trycloudflare\.com:\d+' /tmp/cf_http.log 2>/dev/null | tail -1 || echo "稍等..."
+# 从 metrics 接口拿 TCP 隧道地址
+sleep 2
+curl -s http://localhost:20241/metrics 2>/dev/null | grep -oP 'tunnel_tcp_ingress\{hostname="\K[a-zA-Z0-9.-]+\.trycloudflare\.com",port="\K[0-9]+' | tr ',' ':' | tail -1 || echo "稍等..."
 echo ""
 echo "UUID: $UUID"
 echo "===================="
