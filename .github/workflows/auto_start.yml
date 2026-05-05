@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 130
     steps:
-      - name: 运行
+      - name: 启动并保活
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
@@ -18,17 +18,17 @@ jobs:
           echo ">>> 唤醒..."
           gh codespace ssh -c "$CS_NAME" -- "echo online"
           
-          echo ">>> 同步..."
+          echo ">>> 同步脚本..."
           gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && git config --global --add safe.directory /workspaces/codespaces-blank && git fetch origin && git checkout origin/codespace-literate-train-q76x4rv64jv6c4q94 -- start.sh"
           
-          echo ">>> 启动..."
+          echo ">>> 启动服务..."
           gh codespace ssh -c "$CS_NAME" -- "bash /workspaces/codespaces-blank/start.sh"
           
           echo ""
-          echo ">>> 保活 2h..."
+          echo ">>> 保活 2小时..."
           for i in $(seq 1 24); do
             echo "[$(date +%H:%M)] $i/24"
             gh codespace ssh -c "$CS_NAME" -- "echo alive" 2>/dev/null || true
             sleep 300
           done
-          echo ">>> 完成"
+          echo ">>> 结束"
