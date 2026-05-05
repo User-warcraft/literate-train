@@ -31,22 +31,27 @@ if ! command -v squid >/dev/null 2>&1; then
 fi
 printf 'http_port 3128\nacl all src 0.0.0.0/0\nhttp_access allow all\n' | sudo tee /etc/squid/squid.conf > /dev/null
 sudo service squid restart 2>/dev/null || true
-echo "✅ HTTP 代理已启动 (本地端口3128)"
+echo "✅ HTTP 代理已启动（本地端口3128）"
 
 echo ">>> 建立隧道..."
 ./cloudflared tunnel --url http://localhost:8080 > /tmp/cf_vmess.log 2>&1 &
 sleep 5
 ./cloudflared tunnel --url tcp://localhost:3128 > /tmp/cf_http.log 2>&1 &
-sleep 12
+sleep 8
 
 echo ">>> 读取地址..."
-# 抓取 HTTP 代理公网地址
-HTTP_INFO=$(curl -s http://localhost:20241/metrics 2>/dev/null | grep tcp_ingress | tail -1)
-HTTP_HOST=$(echo "$HTTP_INFO" | grep -oP 'hostname="\K[^"]+')
-HTTP_PORT=$(echo "$HTTP_INFO" | grep -oP 'port="\K[^"]+')
 
-# 抓取 VMess 公网地址
-VMESS_HOST=$(grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log 2>/dev/null | tail -1)
+# 等 metrics 就绪
+for i in 1 2 3 4 5; do
+  curl -s http://localhost:20241/metrics 2>/dev/null | grep -q tcp_ingress && break
+  sleep 2
+done
+
+HTTP_INFO=$(curl -s http://localhost:20241/metrics 2>/dev/null | grep tcp_ingress | tail -1 || echo "")
+HTTP_HOST=$(echo "$HTTP_INFO" | grep -oP 'hostname="\K[^"]+' || echo "")
+HTTP_PORT=$(echo "$HTTP_INFO" | grep -oP 'port="\K[^"]+' || echo "")
+
+VMESS_HOST=$(grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log 2>/dev/null | tail -1 || echo "")
 
 echo ""
 echo "============================================"
