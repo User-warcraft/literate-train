@@ -18,7 +18,7 @@ jobs:
           echo ">>> 唤醒..."
           gh codespace ssh -c "$CS_NAME" -- "echo online"
           
-          echo ">>> 同步代码..."
+          echo ">>> 同步..."
           gh codespace ssh -c "$CS_NAME" -- "cd /workspaces/codespaces-blank && git config --global --add safe.directory /workspaces/codespaces-blank && git fetch origin && git checkout origin/codespace-literate-train-q76x4rv64jv6c4q94 -- start.sh"
           
           echo ">>> 启动..."
