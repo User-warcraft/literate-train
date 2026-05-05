@@ -38,17 +38,20 @@ echo ">>> 隧道..."
 ./cloudflared tunnel --url http://localhost:8080 > /tmp/cf_vmess.log 2>&1 &
 sleep 5
 ./cloudflared tunnel --url tcp://localhost:3128 > /tmp/cf_http.log 2>&1 &
-sleep 8
+sleep 10
+
+# 直接从 metrics 拿 HTTP 地址
+HTTP_ADDR=$(curl -s http://localhost:20241/metrics 2>/dev/null | grep tcp_ingress | grep -oP 'hostname="\K[^"]+' | tail -1)
+HTTP_PORT=$(curl -s http://localhost:20241/metrics 2>/dev/null | grep tcp_ingress | grep -oP 'port="\K[^"]+' | tail -1)
+
+VMESS_ADDR=$(grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log 2>/dev/null | tail -1)
 
 echo ""
 echo "===================="
-echo "VMess:"
-grep -oP 'https://\K[a-zA-Z0-9.-]+\.trycloudflare\.com' /tmp/cf_vmess.log 2>/dev/null | tail -1 || echo "稍等..."
-echo ""
-echo "HTTP:"
-sleep 3
-cat /tmp/cf_http.log 2>/dev/null | grep -oP '[a-zA-Z0-9.-]+\.trycloudflare\.com:\d+' | tail -1 || echo "稍等..."
-echo ""
+echo "VMess: ${VMESS_ADDR:-未获取到}"
+echo "端口: 8080"
 echo "UUID: $UUID"
+echo "--------------------"
+echo "HTTP: ${HTTP_ADDR:-未获取到}:${HTTP_PORT:-未获取到}"
 echo "===================="
 echo "DONE"
